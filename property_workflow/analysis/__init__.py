@@ -1,0 +1,2 @@
+"""Hotspot analysis module."""
+

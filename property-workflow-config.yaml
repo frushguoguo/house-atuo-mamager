@@ -1,0 +1,177 @@
+system:
+  name: "房产自动化工作流" # 系统名称，仅用于展示和日志标识。
+  version: "1.0.0" # 系统版本号。
+  run_mode: "unattended" # 运行模式：unattended(无人值守)/manual(手动)。
+
+capabilities:
+  browser_automation: true # 是否启用浏览器自动化能力。
+  scheduled_tasks: true # 是否启用定时任务调度。
+  memory_persistence: true # 是否启用上下文/记忆持久化。
+  self_evolution: false # 是否启用自进化能力（预留）。
+  remote_control: false # 是否启用远程控制能力（预留）。
+
+pipeline:
+  sample_limit_per_source: 40 # 每个数据源采集条数上限。
+  copywriting_top_n: 12 # 参与文案生成的房源数量。
+  video_top_n: 8 # 参与视频分镜生成的房源数量。
+  publish_top_n: 12 # 参与发布负载构建的房源数量。
+
+base_paths:
+  aplus_root: "C:/Users/dxtorsen/AppData/Roaming/A+" # A+ 基础目录，Cookie/Local State/资源目录都从这里派生。
+  runtime_root: "D:/111/house-atuo-mamager/runtime" # 运行时产物根目录，所有运行输出从这里派生。
+
+data_sources:
+  - name: "beike" # 数据源名称：beike/lianjia/anjuke。
+    enabled: true # 是否启用该数据源。
+    city: "shanghai" # 城市标识（英文或拼音）。
+    districts: # 区域列表。
+      - "pudong"
+      - "minhang"
+    desktop_aplus:
+      enabled: false # 是否启用 A+ 桌面端真实采集。
+      fallback_to_synthetic: true # 真实采集失败时是否回退到模拟数据。
+      cookie_domains: # 登录态 Cookie 域名白名单。
+        - ".ke.com"
+        - ".lianjia.com"
+        - "app.a.ke.com"
+        - "saas.a.ke.com"
+      request_timeout_seconds: 20 # 接口请求超时时间（秒）。
+      list_method: "POST" # 列表接口请求方法：GET/POST。
+      list_endpoint: "" # 列表接口 URL；留空时由自动探测决定。
+      list_base_params: {} # 列表接口公共 query 参数。
+      list_json_body: {} # POST 场景下的 JSON Body 模板。
+      list_headers:
+        Accept: "application/json, text/plain, */*" # Accept 请求头。
+        Content-Type: "application/json;charset=UTF-8" # Content-Type 请求头。
+      list_page_param: "pageNo" # 页码参数名。
+      list_page_size_param: "pageSize" # 每页条数参数名。
+      list_page_in: "body" # 分页参数位置：query/body。
+      list_start_page: 1 # 起始页码。
+      list_page_size: 30 # 每页大小。
+      list_max_pages: 20 # 最大翻页数。
+      list_response_path: # 候选列表路径（按顺序尝试）。
+        - "data.list"
+        - "data.rows"
+        - "data.records"
+        - "list"
+      auto_probe_enabled: true # 是否启用接口自动探测。
+      auto_probe_candidates: [] # 手动候选接口列表；为空时走自动发现。
+      auto_probe_output_path: "aplus_auto_probe_result.json" # 自动探测结果输出路径。
+      auto_probe_discovery_path: "aplus_endpoint_discovery.json" # 接口发现结果输入路径。
+      auto_probe_max_candidates: 30 # 探测最多尝试的候选总数。
+      auto_probe_max_per_host: 10 # 单 host 最多尝试候选数。
+      auto_probe_request_timeout_seconds: 5 # 探测请求超时（秒）。
+      probe_session_tokens_enabled: true # 探测时是否注入 session token。
+      probe_session_tokens_path: "session_host_tokens.json" # session token 文件路径。
+      probe_dt_header_names: # dt 会话类 header 名列表。
+        - "dtSessionId"
+      probe_risk_header_names: # 风控类 header 名列表。
+        - "risk_uuid"
+      sso_seed_enabled: true # 是否执行 SSO 预热。
+      sso_seed_hosts: # SSO 预热 host 列表。
+        - "xinfang.a.ke.com"
+        - "deal.fang.lianjia.com"
+        - "linkconsole.fang.lianjia.com"
+      sso_seed_timeout_seconds: 12 # SSO 预热超时（秒）。
+      total_price_unit: "wan" # 总价单位（如 wan）。
+      detail_url_template: "" # 详情页 URL 模板（可选）。
+      field_mapping: # 原始字段到标准字段映射优先级。
+        listing_id:
+          - "houseCode"
+          - "house_id"
+          - "id"
+        community:
+          - "communityName"
+          - "resblockName"
+          - "villageName"
+        district:
+          - "districtName"
+          - "district"
+          - "bizcircleName"
+        title:
+          - "title"
+          - "houseTitle"
+          - "name"
+        layout:
+          - "layout"
+          - "roomHall"
+          - "houseType"
+        area_sqm:
+          - "area"
+          - "buildArea"
+          - "houseArea"
+        total_price_wan:
+          - "totalPrice"
+          - "price"
+          - "showPrice"
+        listed_at:
+          - "publishTime"
+          - "updateTime"
+          - "createTime"
+        url:
+          - "detailUrl"
+          - "houseUrl"
+          - "url"
+        tags:
+          - "tags"
+          - "houseTags"
+          - "labelNames"
+
+  - name: "lianjia" # 数据源名称。
+    enabled: true # 是否启用该数据源。
+    city: "shanghai" # 城市标识。
+    districts: # 区域列表。
+      - "pudong"
+      - "xuhui"
+
+  - name: "anjuke" # 数据源名称。
+    enabled: true # 是否启用该数据源。
+    city: "shanghai" # 城市标识。
+    districts: # 区域列表。
+      - "putuo"
+      - "jingan"
+
+content_generation:
+  copywriting_style: "专业可信" # 文案风格标记。
+  poster_template: "default" # 海报模板名称（预留）。
+  video_template: "default" # 视频模板名称。
+  publish_call_to_action: "" # 发布文案结尾 CTA（可选）。
+
+publish_platforms:
+  - name: "douyin"
+    enabled: false
+    simulate_failure: false
+  - name: "xiaohongshu"
+    enabled: false
+    simulate_failure: false
+  - name: "kuaishou"
+    enabled: false
+    simulate_failure: false
+  - name: "wechat_video"
+    enabled: false
+    simulate_failure: false
+
+private_domain:
+  wechat_auto_reply: false # 是否启用微信自动回复。
+  psychology_analysis: false # 是否启用心理分析引擎。
+  lead_scoring: false # 是否启用线索评分。
+  auto_followup: false # 是否启用自动跟进。
+
+beike_automation:
+  auto_login: false # 是否启用 A+ 自动登录。
+  property_entry: false # 是否启用房源自动录入。
+  price_adjust: false # 是否启用自动调价。
+  tag_edit: false # 是否启用标签自动维护。
+  status_sync: false # 是否启用上下架状态同步。
+  public_sea_fish: false # 是否启用公海捞鱼流程。
+
+self_evolution:
+  auto_learn: false # 是否启用自动学习。
+  skill_auto_download: false # 是否启用技能自动下载。
+  self_diagnosis: false # 是否启用自诊断。
+  auto_fix: false # 是否启用自动修复。
+
+security:
+  encrypt_data: true # 是否启用数据加密。
+  audit_log: true # 是否启用审计日志。
+  permission_control: true # 是否启用权限控制。

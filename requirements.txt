@@ -1,0 +1,12 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+plotly
+selenium
+requests
+beautifulsoup4
+pytesseract
+cryptography
+imageio-ffmpeg
+pytest
