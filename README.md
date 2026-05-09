@@ -41,7 +41,59 @@ python -m property_workflow.orchestration.pipeline --task video --config .\prope
 python -m property_workflow.integrations.openclaw.task_runner --task full --config .\property-workflow-config.yaml
 ```
 
-可用任务：`collect` `clean` `analyze` `copywrite` `video` `publish` `full`
+可用任务：`collect` `clean` `analyze` `copywrite` `video` `publish` `aplus_sync` `full`
+
+`aplus_sync` 用于将 `clean_listings.json` 同步到 A+ 状态仓（当前为本地可验证闭环）：
+
+```powershell
+python -m property_workflow.orchestration.pipeline --task aplus_sync --config .\property-workflow-config.yaml --date 20260429_douyin_flowtest
+```
+
+## 多平台真实发布接入（sau_cli）
+
+当前项目已支持在 `publish` 阶段调用 `social-auto-upload` 的 CLI（抖音/快手/小红书）。
+
+1. 在 `property-workflow-config.yaml` 里配置平台：
+- `publish_platforms[].publisher: "sau_cli"`
+- `publish_platforms[].account: "<你的账号名>"`
+- `publish_platforms[].sau_project_root: "D:/111/social-auto-upload"`
+- `publish_platforms[].dry_run: true`（先演练）
+
+2. 先跑演练（不真实发布）：
+
+```powershell
+python -m property_workflow.orchestration.pipeline --task publish --config .\property-workflow-config.yaml
+```
+
+3. 检查 `runtime\YYYYMMDD\publish_sau_result_<platform>_*.json` 的命令与参数。
+
+4. 确认无误后把对应平台 `dry_run` 改为 `false`，再执行 `publish` 即可真实上传。
+
+## 商业版任务链（新增）
+
+新增任务：`comments` `private_domain` `crm_sync` `operations` `commercial_full`
+
+商业版一键任务：
+
+```powershell
+python -m property_workflow.orchestration.pipeline --task commercial_full --config .\property-workflow-config.yaml
+```
+
+`commercial_full` 执行链路：
+
+- `collect -> clean -> analyze -> copywrite -> video -> publish -> aplus_sync`
+- `comments`（评论监控与自动回复建议）
+- `private_domain`（线索评分、意向阶段、跟进策略）
+- `crm_sync`（线索入库与增量同步）
+- `operations`（运行体检、校验和、审计日志）
+
+主要新增产物：
+
+- `comment_moderation.json` `comment_replies.json` `comment_leads.json` `comments_report.json`
+- `private_domain_profiles.json` `private_domain_followups.json` `private_domain_report.json`
+- `crm_sync_actions.json` `crm_sync_conflicts.json` `crm_sync_report.json`
+- `operations_report.json`
+- `runtime\audit_log.jsonl`
 
 
 ## A+ Unattended

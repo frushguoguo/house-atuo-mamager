@@ -141,6 +141,50 @@ function shouldFetchBody(rawUrl, mimeType) {
   );
 }
 
+function pickAuthHeaders(headers) {
+  const result = {};
+  if (!headers || typeof headers !== 'object') return result;
+  const allow = [
+    'authorization',
+    'cookie',
+    'x-clouduid',
+    'x-lj-gateway',
+    'x-requested-with',
+    'x-csrf-token',
+    'x-xsrf-token',
+    'x-device-id',
+    'x-trace-id',
+    'x-ucid',
+    'dtSessionId',
+    'risk_uuid',
+    'referer',
+    'origin',
+    'user-agent',
+  ];
+  for (const [k, v] of Object.entries(headers)) {
+    const key = String(k || '');
+    const lower = key.toLowerCase();
+    if (allow.includes(key) || allow.includes(lower) || lower.startsWith('x-')) {
+      result[key] = String(v || '');
+    }
+  }
+  return result;
+}
+
+function cookieNameListFromHeader(cookieHeader) {
+  const text = String(cookieHeader || '');
+  if (!text) return [];
+  const names = [];
+  for (const part of text.split(';')) {
+    const p = String(part || '').trim();
+    if (!p || !p.includes('=')) continue;
+    const name = p.slice(0, p.indexOf('=')).trim();
+    if (!name) continue;
+    names.push(name);
+  }
+  return Array.from(new Set(names));
+}
+
 function extractPath(data, selector) {
   const tokens = String(selector || '').split('.').map((x) => x.trim()).filter(Boolean);
   let cur = data;
@@ -178,8 +222,13 @@ function summarizeBody(bodyText) {
       'data.list',
       'data.rows',
       'data.records',
+      'data.result',
       'data.result.list',
+      'data.data.result',
       'result.list',
+      'result',
+      'data.page.list',
+      'data.page.result',
       'list',
       'rows',
       'records',
@@ -335,14 +384,19 @@ async function main() {
           url,
           ts,
           type,
+          requestHeaders: pickAuthHeaders(req.headers || {}),
         });
 
+        const authHeaders = pickAuthHeaders(req.headers || {});
         requestRows.push({
           ts,
           method,
           type,
           url,
           referer: String((req.headers || {}).Referer || ''),
+          authHeaders,
+          cookieNames: cookieNameListFromHeader(authHeaders.cookie || authHeaders.Cookie || ''),
+          postData: String(req.postData || '').slice(0, 8000),
           postDataSample: String(req.postData || '').slice(0, 300),
           targetId: state.target.id,
           targetTitle: state.target.title || '',
@@ -383,6 +437,8 @@ async function main() {
           url,
           status: Number(response.status || 0),
           mimeType,
+          requestHeaders: reqMeta.requestHeaders || {},
+          responseAuthHeaders: pickAuthHeaders(response.headers || {}),
           targetId: state.target.id,
           targetTitle: state.target.title || '',
           targetUrl: state.target.url || '',

@@ -141,12 +141,33 @@ publish_platforms:
   - name: "douyin"
     enabled: false
     simulate_failure: false
+    publisher: "sau_cli" # mock / sau_cli
+    account: "" # sau_cli 账号名（例如 agent001）
+    sau_project_root: "D:/111/social-auto-upload"
+    dry_run: true # true=只生成命令记录，不真实上传
+    headless: true
+    debug: false
+    schedule: "" # 例如 2026-05-01 21:30
   - name: "xiaohongshu"
     enabled: false
     simulate_failure: false
+    publisher: "sau_cli"
+    account: ""
+    sau_project_root: "D:/111/social-auto-upload"
+    dry_run: true
+    headless: true
+    debug: false
+    schedule: ""
   - name: "kuaishou"
     enabled: false
     simulate_failure: false
+    publisher: "sau_cli"
+    account: ""
+    sau_project_root: "D:/111/social-auto-upload"
+    dry_run: true
+    headless: true
+    debug: false
+    schedule: ""
   - name: "wechat_video"
     enabled: false
     simulate_failure: false

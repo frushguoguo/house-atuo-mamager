@@ -29,8 +29,13 @@ DEFAULT_PROBE_RESPONSE_PATHS = [
     "data.list",
     "data.rows",
     "data.records",
+    "data.result",
     "data.result.list",
+    "data.data.result",
     "result.list",
+    "result",
+    "data.page.list",
+    "data.page.result",
     "list",
     "rows",
     "records",
@@ -667,17 +672,28 @@ def _inject_page_values(
 
 def _score_probe_endpoint(endpoint: str, method: str) -> int:
     parsed = urlparse(endpoint)
+    host = parsed.netloc.lower()
     path = parsed.path.lower()
     score = 0
 
+    if host.endswith("lease-pz.link.lianjia.com"):
+        score += 1200
+    if "/api/houselist/search/pc/list" in path:
+        score += 1500
+    if "/api/houselist/search/house" in path:
+        score += 1300
+    if "/api/houselist/search/focus/house" in path:
+        score += 1050
+    if "/api/houselist/search/unfocus/house" in path:
+        score += 1020
     if "/api/deal/list" in path or "/api/house/list" in path:
         score += 260
     if "/search/searchquerynew" in path:
-        score += 820
+        score += 120
     if "/pc/risk/getriskinfov3" in path:
-        score += 700
+        score += 80
     if "queryhouselist" in path or "historylist" in path:
-        score += 220
+        score += 260
     if path.endswith("/api/list") or "/api/list" in path:
         score += 180
     if "/api/" in path and "/new/api/" not in path:
@@ -698,6 +714,12 @@ def _score_probe_endpoint(endpoint: str, method: str) -> int:
     if any(
         keyword in path
         for keyword in (
+            "sug",
+            "suggest",
+            "searchoption",
+            "shareqrcode",
+            "getredirecturl",
+            "getexamtips",
             "houseinvalid",
             "cashcow",
             "/cfg/",
@@ -705,7 +727,7 @@ def _score_probe_endpoint(endpoint: str, method: str) -> int:
             "housedel",
         )
     ):
-        score -= 260
+        score -= 420
     if any(
         keyword in path
         for keyword in (
@@ -928,6 +950,7 @@ def _auto_probe_list_config(
                 "url": candidate["endpoint"],
                 "headers": headers,
                 "timeout": settings.auto_probe_request_timeout_seconds,
+                "allow_redirects": False,
             }
             if params:
                 request_kwargs["params"] = params
@@ -937,6 +960,7 @@ def _auto_probe_list_config(
             response = session.request(**request_kwargs)
             attempt["status"] = response.status_code
             attempt["final_url"] = response.url
+            attempt["location"] = response.headers.get("Location", "")
             attempt["sample"] = response.text[:240]
             try:
                 payload = response.json()
@@ -994,6 +1018,54 @@ def _auto_probe_list_config(
     if discovered is None:
         raise ValueError(f"desktop_aplus auto probe failed, see {report_path}")
     return discovered, report_path
+
+
+def _write_auto_probe_fallback_success_report(
+    settings: DesktopAplusSettings,
+    *,
+    reason: Exception,
+    fallback_row_count: int,
+    fallback_meta: dict[str, Any] | None,
+) -> None:
+    report_path = _resolve_output_path(settings, settings.auto_probe_output_path)
+    payload: dict[str, Any] = {}
+    if report_path.exists():
+        try:
+            loaded = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                payload = loaded
+        except (json.JSONDecodeError, OSError):
+            payload = {}
+
+    fallback_payload = {
+        "source": "cdp_capture",
+        "status": "success",
+        "reason": str(reason),
+        "row_count": int(fallback_row_count),
+        "capture_path": str(_resolve_output_path(settings, settings.cdp_capture_path)),
+    }
+    if isinstance(fallback_meta, dict):
+        for key in ("url", "method", "list_path", "dict_row_count"):
+            value = fallback_meta.get(key)
+            if value is not None and value != "":
+                fallback_payload[key] = value
+
+    resolved = {
+        "source": "cdp_capture",
+        "endpoint": str(fallback_payload.get("url", "")),
+        "method": str(fallback_payload.get("method", "GET")),
+        "response_path": str(fallback_payload.get("list_path", "")),
+    }
+
+    payload["generated_at"] = datetime.now().isoformat(timespec="seconds")
+    payload["success"] = True
+    payload["mode"] = "cdp_fallback"
+    payload["auto_probe_success"] = False
+    payload["resolved"] = resolved
+    payload["fallback"] = fallback_payload
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _map_row(
@@ -1098,23 +1170,24 @@ def _load_rows_from_cdp_capture(
     city: str,
     districts: list[str],
     limit: int,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     if not settings.cdp_capture_fallback_enabled:
-        return []
+        return [], None
     capture_path = _resolve_output_path(settings, settings.cdp_capture_path)
     if not capture_path.exists():
-        return []
+        return [], None
     try:
         payload = json.loads(capture_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return []
+        return [], None
 
     responses = payload.get("responses", [])
     if not isinstance(responses, list):
-        return []
+        return [], None
 
     min_dict_rows = max(int(settings.cdp_capture_response_min_dict_rows), 1)
     best_rows: list[dict[str, Any]] = []
+    best_meta: dict[str, Any] | None = None
     best_score = -1
 
     for row in responses:
@@ -1157,16 +1230,22 @@ def _load_rows_from_cdp_capture(
             continue
         best_score = score
         best_rows = list_rows
+        best_meta = {
+            "url": url,
+            "method": _safe_text(row.get("method"), "GET"),
+            "list_path": _safe_text(row.get("listPath")),
+            "dict_row_count": dict_count,
+        }
 
     if not best_rows:
-        return []
+        return [], None
 
     output: list[dict[str, Any]] = []
     for item in best_rows:
         output.append(_map_row(item, settings, city, districts, len(output) + 1))
         if len(output) >= limit:
             break
-    return output
+    return output, best_meta
 
 
 def collect_from_aplus_desktop(
@@ -1242,22 +1321,30 @@ def collect_from_aplus_desktop(
                 settings.list_headers = {**discovered["headers"], **settings.list_headers}
             print(f"[beike][desktop] auto probe success: {settings.list_method} {settings.list_endpoint}")
             print(f"[beike][desktop] auto probe report -> {report_path}")
-        except Exception:
-            fallback_rows = _load_rows_from_cdp_capture(
+        except Exception as exc:
+            fallback_rows, fallback_meta = _load_rows_from_cdp_capture(
                 settings=settings,
                 city=city,
                 districts=districts,
                 limit=limit,
             )
             if fallback_rows:
+                _write_auto_probe_fallback_success_report(
+                    settings=settings,
+                    reason=exc,
+                    fallback_row_count=len(fallback_rows),
+                    fallback_meta=fallback_meta,
+                )
                 print(
-                    "[beike][desktop] auto probe failed, "
-                    f"fallback to CDP capture rows: {len(fallback_rows)}"
+                    "[beike][desktop] auto probe fallback success, "
+                    f"rows={len(fallback_rows)}"
                 )
                 return fallback_rows
             raise
 
     rows: list[dict[str, Any]] = []
+    seen_listing_ids: set[str] = set()
+    seen_row_fallback_keys: set[tuple[str, str, str, float, float]] = set()
     method = settings.list_method.upper()
     static_headers = {
         **settings.list_headers,
@@ -1301,7 +1388,24 @@ def collect_from_aplus_desktop(
         for item in list_payload:
             if not isinstance(item, dict):
                 continue
-            rows.append(_map_row(item, settings, city, districts, len(rows) + 1))
+            mapped = _map_row(item, settings, city, districts, len(rows) + 1)
+            listing_id = _safe_text(mapped.get("listing_id"))
+            if listing_id and listing_id in seen_listing_ids:
+                continue
+            fallback_key = (
+                _safe_text(mapped.get("title")),
+                _safe_text(mapped.get("community")),
+                _safe_text(mapped.get("district")),
+                float(mapped.get("area_sqm") or 0.0),
+                float(mapped.get("total_price_wan") or 0.0),
+            )
+            if not listing_id and fallback_key in seen_row_fallback_keys:
+                continue
+            rows.append(mapped)
+            if listing_id:
+                seen_listing_ids.add(listing_id)
+            else:
+                seen_row_fallback_keys.add(fallback_key)
             if len(rows) >= limit:
                 return rows
 

@@ -11,6 +11,7 @@ from .mock_publishers import (
     WechatVideoMockPublisher,
     XiaohongshuMockPublisher,
 )
+from .sau_cli_publishers import SauCliVideoPublisher
 
 
 def _safe_text(value: Any, default: str = "") -> str:
@@ -129,6 +130,12 @@ def build_publish_bundle(
 
 def _create_publisher(name: str, settings: dict[str, Any] | None = None) -> Publisher:
     key = _safe_text(name).lower()
+    mode = _safe_text((settings or {}).get("publisher"), "mock").lower()
+    if mode == "sau_cli":
+        if key in {"douyin", "kuaishou", "xiaohongshu"}:
+            return SauCliVideoPublisher(platform=key, settings=settings)
+        raise ValueError(f"sau_cli publisher does not support platform: {name}")
+
     if key == "douyin":
         return DouyinMockPublisher(settings=settings)
     if key == "xiaohongshu":
@@ -196,4 +203,3 @@ def publish_to_enabled_platforms(
         "success_platform_count": success_count,
         "failed_platform_count": failed_count,
     }
-

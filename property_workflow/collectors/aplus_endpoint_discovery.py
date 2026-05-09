@@ -143,6 +143,49 @@ def _pick_param_name(keys: list[str], candidates: tuple[str, ...], default: str)
     return default
 
 
+def _sanitize_header_name(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if any(ch in text for ch in ("\r", "\n", ":")):
+        return ""
+    return text
+
+
+def _sanitize_header_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text.replace("\r", " ").replace("\n", " ").strip()
+
+
+def _extract_capture_headers(raw_headers: Any) -> dict[str, str]:
+    if not isinstance(raw_headers, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in raw_headers.items():
+        name = _sanitize_header_name(key)
+        header_value = _sanitize_header_value(value)
+        if not name or not header_value:
+            continue
+        lower = name.lower()
+        if lower in {"cookie", "content-length", "host", "connection"}:
+            continue
+        out[name] = header_value
+    return out
+
+
+def _parse_capture_post_body(raw_body: Any) -> dict[str, Any]:
+    text = str(raw_body or "").strip()
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def _score_cdp_candidate_path(path: str) -> int:
     lowered = path.lower()
     score = 0
@@ -518,6 +561,13 @@ def discover_aplus_endpoints(
                     }
                     if base_params:
                         candidate["base_params"] = base_params
+                    req_headers = _extract_capture_headers(row.get("authHeaders"))
+                    if req_headers:
+                        candidate["headers"] = req_headers
+                    if method in {"POST", "PUT", "PATCH"}:
+                        post_body = _parse_capture_post_body(row.get("postData"))
+                        if post_body:
+                            candidate["json_body"] = post_body
                     list_path = response_path_by_endpoint_method.get((method, endpoint))
                     if list_path:
                         candidate["response_path"] = list_path

@@ -174,11 +174,32 @@ def _refresh_auth_snapshot(
     if token_extract_script.exists():
         try:
             token_output = (runtime_root / "session_host_tokens.json").resolve()
+            prev_text = ""
+            prev_host_count = 0
+            if token_output.exists():
+                try:
+                    prev_text = token_output.read_text(encoding="utf-8")
+                    prev_payload = json.loads(prev_text)
+                    prev_host_data = prev_payload.get("host_data", {})
+                    if isinstance(prev_host_data, dict):
+                        prev_host_count = len(prev_host_data)
+                except Exception:
+                    prev_text = ""
+                    prev_host_count = 0
             subprocess.run(
                 [sys.executable, str(token_extract_script), "--output", str(token_output)],
                 check=False,
                 timeout=45,
             )
+            try:
+                new_payload = json.loads(token_output.read_text(encoding="utf-8"))
+                new_host_data = new_payload.get("host_data", {})
+                new_host_count = len(new_host_data) if isinstance(new_host_data, dict) else 0
+                if new_host_count == 0 and prev_host_count > 0 and prev_text:
+                    token_output.write_text(prev_text, encoding="utf-8")
+                    payload["session_token_preserved"] = True
+            except Exception:
+                pass
             payload["session_token_path"] = str(token_output)
         except Exception:
             pass

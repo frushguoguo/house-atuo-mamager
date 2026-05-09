@@ -6,8 +6,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from property_workflow.aplus.sync_engine import sync_clean_rows_to_aplus
 from property_workflow.analysis.hotspot import build_hotspot_report, render_markdown_report
 from property_workflow.cleaning.cleaner import clean_listings
+from property_workflow.commercial.comments_engine import analyze_comment_operations
+from property_workflow.commercial.crm_sync_engine import sync_private_domain_to_crm
+from property_workflow.commercial.operations_engine import build_operations_report
+from property_workflow.commercial.private_domain_engine import build_private_domain_profiles
 from property_workflow.collectors.factory import create_collector
 from property_workflow.config import load_config, resolve_base_path
 from property_workflow.content.copywriter import generate_batch_copy
@@ -241,6 +246,70 @@ def run_publish(config: dict[str, Any], run_dir: Path) -> Path:
     return report_out
 
 
+def run_aplus_sync(run_dir: Path) -> Path:
+    clean_rows = _load_json(run_dir / "clean_listings.json")
+    report = sync_clean_rows_to_aplus(clean_rows, run_dir=run_dir)
+    output = run_dir / "aplus_sync_report.json"
+    _save_json(output, report)
+    print(
+        "[aplus_sync] done: "
+        f"created={report.get('created_count', 0)} "
+        f"updated={report.get('updated_count', 0)} "
+        f"unchanged={report.get('unchanged_count', 0)} "
+        f"conflicts={report.get('conflict_count', 0)} -> {output}"
+    )
+    return output
+
+
+def run_comments(config: dict[str, Any], run_dir: Path) -> Path:
+    report = analyze_comment_operations(config, run_dir)
+    output = run_dir / "comments_report.json"
+    _save_json(output, report)
+    print(
+        "[comments] done: "
+        f"comments={report.get('total_comments', 0)} "
+        f"leads={report.get('lead_candidates_count', 0)} -> {output}"
+    )
+    return output
+
+
+def run_private_domain(config: dict[str, Any], run_dir: Path) -> Path:
+    report = build_private_domain_profiles(config, run_dir)
+    output = run_dir / "private_domain_report.json"
+    _save_json(output, report)
+    print(
+        "[private_domain] done: "
+        f"leads={report.get('lead_count', 0)} "
+        f"bands={report.get('band_distribution', {})} -> {output}"
+    )
+    return output
+
+
+def run_crm_sync(run_dir: Path) -> Path:
+    report = sync_private_domain_to_crm(run_dir)
+    output = run_dir / "crm_sync_report.json"
+    _save_json(output, report)
+    print(
+        "[crm_sync] done: "
+        f"created={report.get('created_count', 0)} "
+        f"updated={report.get('updated_count', 0)} "
+        f"unchanged={report.get('unchanged_count', 0)} -> {output}"
+    )
+    return output
+
+
+def run_operations(config: dict[str, Any], run_dir: Path) -> Path:
+    report = build_operations_report(config, run_dir)
+    output = run_dir / "operations_report.json"
+    _save_json(output, report)
+    print(
+        "[operations] done: "
+        f"status={report.get('status')} "
+        f"success_rate={report.get('stage_success_rate')} -> {output}"
+    )
+    return output
+
+
 def run_pipeline_task(task: str, config_path: Path, date_token: str | None = None) -> Path:
     try:
         config = load_config(config_path)
@@ -275,11 +344,33 @@ def run_pipeline_task(task: str, config_path: Path, date_token: str | None = Non
         run_video(config, run_dir)
     elif task == "publish":
         run_publish(config, run_dir)
+    elif task == "aplus_sync":
+        run_aplus_sync(run_dir)
+    elif task == "comments":
+        run_comments(config, run_dir)
+    elif task == "private_domain":
+        run_private_domain(config, run_dir)
+    elif task == "crm_sync":
+        run_crm_sync(run_dir)
+    elif task == "operations":
+        run_operations(config, run_dir)
     elif task == "full":
         run_collect(config, run_dir)
         run_clean(run_dir)
         run_analyze(run_dir)
         run_copywrite(config, run_dir)
+    elif task == "commercial_full":
+        run_collect(config, run_dir)
+        run_clean(run_dir)
+        run_analyze(run_dir)
+        run_copywrite(config, run_dir)
+        run_video(config, run_dir)
+        run_publish(config, run_dir)
+        run_aplus_sync(run_dir)
+        run_comments(config, run_dir)
+        run_private_domain(config, run_dir)
+        run_crm_sync(run_dir)
+        run_operations(config, run_dir)
     else:
         raise PipelineError(
             error_code="E_TASK_UNKNOWN",
@@ -317,7 +408,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--task",
         required=True,
-        choices=["collect", "clean", "analyze", "copywrite", "video", "publish", "full"],
+        choices=[
+            "collect",
+            "clean",
+            "analyze",
+            "copywrite",
+            "video",
+            "publish",
+            "aplus_sync",
+            "comments",
+            "private_domain",
+            "crm_sync",
+            "operations",
+            "full",
+            "commercial_full",
+        ],
         help="Task name to run",
     )
     parser.add_argument(

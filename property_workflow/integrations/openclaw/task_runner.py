@@ -11,7 +11,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--task",
         required=True,
-        choices=["collect", "clean", "analyze", "copywrite", "video", "publish", "full"],
+        choices=[
+            "collect",
+            "clean",
+            "analyze",
+            "copywrite",
+            "video",
+            "publish",
+            "aplus_sync",
+            "comments",
+            "private_domain",
+            "crm_sync",
+            "operations",
+            "full",
+            "commercial_full",
+        ],
         help="Pipeline task name",
     )
     parser.add_argument(
